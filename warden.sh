@@ -42,7 +42,7 @@ source $HOME/.profile
 go version
 
 # Clone the Wardend repository and build
-git clone --depth 1 --branch v0.1.0 https://github.com/warden-protocol/wardenprotocol/
+git clone --depth 1 --branch v0.3.0 https://github.com/warden-protocol/wardenprotocol/
 cd  wardenprotocol/warden/cmd/wardend
 go build
 sudo mv wardend /usr/local/bin/
