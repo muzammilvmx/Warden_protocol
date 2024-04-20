@@ -23,55 +23,107 @@ if [ "$choice" != "Y" ]; then
     exit 0
 fi
 
-# Update package repositories and install necessary packages
-sudo apt update
-sudo apt-get install git curl build-essential make jq gcc snapd chrony lz4 tmux unzip bc -y
+# Update system and install necessary packages
+sudo apt -q update
+sudo apt -qy install curl git jq lz4 build-essential
+sudo apt -qy upgrade
 
-# Remove existing Go installations and set up Go environment
-rm -rf $HOME/go
+# Install Go
+ver="1.21.3"
+wget "https://golang.org/dl/go$ver.linux-amd64.tar.gz"
 sudo rm -rf /usr/local/go
-cd $HOME
-curl https://dl.google.com/go/go1.20.5.linux-amd64.tar.gz | sudo tar -C/usr/local -zxvf -
-cat <<'EOF' >>$HOME/.profile
-export GOROOT=/usr/local/go
-export GOPATH=$HOME/go
-export GO111MODULE=on
-export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin
-EOF
-source $HOME/.profile
+sudo tar -C /usr/local -xzf "go$ver.linux-amd64.tar.gz"
+rm "go$ver.linux-amd64.tar.gz"
+echo "export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin" >> $HOME/.bash_profile
+source $HOME/.bash_profile
 go version
 
-# Clone the Wardend repository and build
-git clone --depth 1 --branch v0.3.0 https://github.com/warden-protocol/wardenprotocol/
-cd  wardenprotocol/warden/cmd/wardend
-go build
-sudo mv wardend /usr/local/bin/
+# Clone and install Wardend
+cd $HOME
+git clone https://github.com/warden-protocol/wardenprotocol.git
+cd wardenprotocol
+git checkout v0.3.0
+make install
 
-# Initiate Wardend with custom moniker
+# Configure cosmovisor
+cd $HOME
+mkdir -p ~/.warden/cosmovisor/upgrades/v0.3.0/bin
+mv $HOME/go/bin/wardend ~/.warden/cosmovisor/upgrades/v0.3.0/bin/
+sudo ln -s ~/.warden/cosmovisor/genesis ~/.warden/cosmovisor/current -f
+sudo ln -s ~/.warden/cosmovisor/current/bin/wardend /usr/local/bin/wardend -f
+go install cosmossdk.io/tools/cosmovisor/cmd/cosmovisor@v1.5.0
+
+# Create and enable systemd service for Wardend
+sudo tee /etc/systemd/system/wardend.service > /dev/null << EOF
+[Unit]
+Description=warden node service
+After=network-online.target
+
+[Service]
+User=$USER
+ExecStart=$(which cosmovisor) run start
+Restart=on-failure
+RestartSec=10
+LimitNOFILE=65535
+Environment="DAEMON_HOME=~/.warden"
+Environment="DAEMON_NAME=wardend"
+Environment="UNSAFE_SKIP_BACKUP=true"
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:~/.warden/cosmovisor/current/bin"
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable wardend
+
+# Initialize Wardend configuration
+wardend config chain-id buenavista-1
+wardend config keyring-backend os
+wardend config node tcp://localhost:26657
 read -p "Enter your custom moniker: " moniker
 wardend init $moniker
 
-# Update configuration files with necessary settings
-cd $HOME/.warden/config
-rm genesis.json
-wget https://raw.githubusercontent.com/warden-protocol/networks/main/testnet-alfama/genesis.json
+# Download configuration files
+curl https://config-t.noders.services/warden/genesis.json -o ~/.warden/config/genesis.json
+curl https://config-t.noders.services/warden/addrbook.json -o ~/.warden/config/addrbook.json
 
-sed -i 's/minimum-gas-prices = ""/minimum-gas-prices = "0.0025uward"/' app.toml
-sed -i 's/persistent_peers = ""/persistent_peers = "6a8de92a3bb422c10f764fe8b0ab32e1e334d0bd@sentry-1.alfama.wardenprotocol.org:26656,7560460b016ee0867cae5642adace5d011c6c0ae@sentry-2.alfama.wardenprotocol.org:26656,24ad598e2f3fc82630554d98418d26cc3edf28b9@sentry-3.alfama.wardenprotocol.org:26656"/' config.toml
+# Update configuration settings
+sed -i.bak -e "s/^persistent_peers *=.*/persistent_peers = \"64fc01489d8fda6b6aa859aef438e4131df6bcda@warden-t-rpc.noders.services:23656\"/" ~/.warden/config/config.toml
+sed -i -e "s|^minimum-gas-prices *=.*|minimum-gas-prices = \"0.001uward\"|" ~/.warden/config/app.toml
+sed -i \
+  -e 's|^pruning *=.*|pruning = "custom"|' \
+  -e 's|^pruning-keep-recent *=.*|pruning-keep-recent = "100"|' \
+  -e 's|^pruning-keep-every *=.*|pruning-keep-every = "0"|' \
+  -e 's|^pruning-interval *=.*|pruning-interval = "19"|' \
+  ~/.warden/config/app.toml
 
-export SNAP_RPC_SERVERS="https://rpc.sentry-1.alfama.wardenprotocol.org:443,https://rpc.sentry-2.alfama.wardenprotocol.org:443,https://rpc.sentry-3.alfama.wardenprotocol.org:443"
-export LATEST_HEIGHT=$(curl -s "https://rpc.alfama.wardenprotocol.org/block" | jq -r .result.block.header.height)
-export BLOCK_HEIGHT=$((LATEST_HEIGHT - 2000))
-export TRUST_HASH=$(curl -s "https://rpc.alfama.wardenprotocol.org/block?height=$BLOCK_HEIGHT" | jq -r .result.block_id.hash)
+# Start Wardend service
+sudo systemctl start wardend
+sudo journalctl -u wardend -f --no-hostname -o cat
 
-sed -i.bak -E "s|^(enable[[:space:]]+=[[:space:]]+).*$|\1true| ; \
-s|^(rpc_servers[[:space:]]+=[[:space:]]+).*$|\1\"$SNAP_RPC_SERVERS\"| ; \
-s|^(trust_height[[:space:]]+=[[:space:]]+).*$|\1$BLOCK_HEIGHT| ; \
-s|^(trust_hash[[:space:]]+=[[:space:]]+).*$|\1\"$TRUST_HASH\"|" $HOME/.warden/config/config.toml
 
-# Start Wardend in a new tmux session
-tmux new-session -d -s wardend 'wardend start'
+# Update system and install necessary packages
+sudo apt update
+sudo apt install snapd -y
+sudo snap install lz4
 
-echo "Wardend installation and setup completed."
-echo "Wardend is running in a tmux session named 'wardend'."
-echo "You can attach to it using 'tmux attach-session -t wardend'."
+# Stop Wardend
+sudo systemctl stop wardend
+
+# Backup priv_validator_state.json
+cp ~/.warden/data/priv_validator_state.json  ~/.warden/priv_validator_state.json
+
+# Download and extract snapshot data
+cd $HOME
+sudo rm -rf ~/.warden/data
+sudo rm -rf ~/.warden/wasm
+curl -o - -L https://config-t.noders.services/warden/data.tar.lz4 | lz4 -d | tar -x -C ~/.warden
+curl -o - -L https://config-t.noders.services/warden/wasm.tar.lz4 | lz4 -d | tar -x -C ~/.warden
+
+# Restore priv_validator_state.json
+cp ~/.warden/priv_validator_state.json  ~/.warden/data/priv_validator_state.json
+
+# Restart Wardend
+sudo systemctl restart wardend
+sudo journalctl -fu wardend --no-hostname -o cat
