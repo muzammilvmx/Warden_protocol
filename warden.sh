@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Get absolute path to home directory
+HOME_DIR=$(realpath ~)
+
 # Print Cipher_Airdrop in big bold text
 echo "========================================================================="
 echo "  _____   _____   _____    _    _   ______   _____                 "
@@ -34,23 +37,23 @@ wget "https://golang.org/dl/go$ver.linux-amd64.tar.gz"
 sudo rm -rf /usr/local/go
 sudo tar -C /usr/local -xzf "go$ver.linux-amd64.tar.gz"
 rm "go$ver.linux-amd64.tar.gz"
-echo "export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin" >> $HOME/.bash_profile
-source $HOME/.bash_profile
+echo "export PATH=$PATH:/usr/local/go/bin:$HOME_DIR/go/bin" >> $HOME_DIR/.bash_profile
+source $HOME_DIR/.bash_profile
 go version
 
 # Clone and install Wardend
-cd $HOME
+cd $HOME_DIR
 git clone https://github.com/warden-protocol/wardenprotocol.git
 cd wardenprotocol
 git checkout v0.3.0
 make install
 
 # Configure cosmovisor
-cd $HOME
-mkdir -p ~/.warden/cosmovisor/upgrades/v0.3.0/bin
-mv $HOME/go/bin/wardend ~/.warden/cosmovisor/upgrades/v0.3.0/bin/
-sudo ln -s ~/.warden/cosmovisor/genesis ~/.warden/cosmovisor/current -f
-sudo ln -s ~/.warden/cosmovisor/current/bin/wardend /usr/local/bin/wardend -f
+cd $HOME_DIR
+mkdir -p $HOME_DIR/.warden/cosmovisor/upgrades/v0.3.0/bin
+mv $HOME_DIR/go/bin/wardend $HOME_DIR/.warden/cosmovisor/upgrades/v0.3.0/bin/
+sudo ln -s $HOME_DIR/.warden/cosmovisor/genesis $HOME_DIR/.warden/cosmovisor/current -f
+sudo ln -s $HOME_DIR/.warden/cosmovisor/current/bin/wardend /usr/local/bin/wardend -f
 go install cosmossdk.io/tools/cosmovisor/cmd/cosmovisor@v1.5.0
 
 # Create and enable systemd service for Wardend
@@ -65,10 +68,10 @@ ExecStart=$(which cosmovisor) run start
 Restart=on-failure
 RestartSec=10
 LimitNOFILE=65535
-Environment="DAEMON_HOME=~/.warden"
+Environment="DAEMON_HOME=$HOME_DIR/.warden"
 Environment="DAEMON_NAME=wardend"
 Environment="UNSAFE_SKIP_BACKUP=true"
-Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:~/.warden/cosmovisor/current/bin"
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:$HOME_DIR/.warden/cosmovisor/current/bin"
 
 [Install]
 WantedBy=multi-user.target
@@ -85,24 +88,24 @@ read -p "Enter your custom moniker: " moniker
 wardend init $moniker
 
 # Download configuration files
-curl https://config-t.noders.services/warden/genesis.json -o ~/.warden/config/genesis.json
-curl https://config-t.noders.services/warden/addrbook.json -o ~/.warden/config/addrbook.json
+curl https://config-t.noders.services/warden/genesis.json -o $HOME_DIR/.warden/config/genesis.json
+curl https://config-t.noders.services/warden/addrbook.json -o $HOME_DIR/.warden/config/addrbook.json
 
 # Update configuration settings
-sed -i.bak -e "s/^persistent_peers *=.*/persistent_peers = \"64fc01489d8fda6b6aa859aef438e4131df6bcda@warden-t-rpc.noders.services:23656\"/" ~/.warden/config/config.toml
-sed -i -e "s|^minimum-gas-prices *=.*|minimum-gas-prices = \"0.001uward\"|" ~/.warden/config/app.toml
+sed -i.bak -e "s/^persistent_peers *=.*/persistent_peers = \"64fc01489d8fda6b6aa859aef438e4131df6bcda@warden-t-rpc.noders.services:23656\"/" $HOME_DIR/.warden/config/config.toml
+sed -i -e "s|^minimum-gas-prices *=.*|minimum-gas-prices = \"0.001uward\"|" $HOME_DIR/.warden/config/app.toml
 sed -i \
   -e 's|^pruning *=.*|pruning = "custom"|' \
   -e 's|^pruning-keep-recent *=.*|pruning-keep-recent = "100"|' \
   -e 's|^pruning-keep-every *=.*|pruning-keep-every = "0"|' \
   -e 's|^pruning-interval *=.*|pruning-interval = "19"|' \
-  ~/.warden/config/app.toml
+  $HOME_DIR/.warden/config/app.toml
 
 # Start Wardend service
 sudo systemctl start wardend
 sudo journalctl -u wardend -f --no-hostname -o cat
 
-
+# Process snapshot
 # Update system and install necessary packages
 sudo apt update
 sudo apt install snapd -y
@@ -112,17 +115,17 @@ sudo snap install lz4
 sudo systemctl stop wardend
 
 # Backup priv_validator_state.json
-cp ~/.warden/data/priv_validator_state.json  ~/.warden/priv_validator_state.json
+cp $HOME_DIR/.warden/data/priv_validator_state.json  $HOME_DIR/.warden/priv_validator_state.json
 
 # Download and extract snapshot data
-cd $HOME
-sudo rm -rf ~/.warden/data
-sudo rm -rf ~/.warden/wasm
-curl -o - -L https://config-t.noders.services/warden/data.tar.lz4 | lz4 -d | tar -x -C ~/.warden
-curl -o - -L https://config-t.noders.services/warden/wasm.tar.lz4 | lz4 -d | tar -x -C ~/.warden
+cd $HOME_DIR
+sudo rm -rf $HOME_DIR/.warden/data
+sudo rm -rf $HOME_DIR/.warden/wasm
+curl -o - -L https://config-t.noders.services/warden/data.tar.lz4 | lz4 -d | tar -x -C $HOME_DIR/.warden
+curl -o - -L https://config-t.noders.services/warden/wasm.tar.lz4 | lz4 -d | tar -x -C $HOME_DIR/.warden
 
 # Restore priv_validator_state.json
-cp ~/.warden/priv_validator_state.json  ~/.warden/data/priv_validator_state.json
+cp $HOME_DIR/.warden/priv_validator_state.json  $HOME_DIR/.warden/data/priv_validator_state.json
 
 # Restart Wardend
 sudo systemctl restart wardend
