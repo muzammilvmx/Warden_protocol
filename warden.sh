@@ -48,6 +48,10 @@ cd wardenprotocol
 git checkout v0.3.0
 make install
 
+# Print current directory and contents to check if wardend is installed correctly
+echo "Current directory: $(pwd)"
+echo "Contents of v0.3.0/bin: $(ls $HOME_DIR/.warden/cosmovisor/upgrades/v0.3.0/bin)"
+
 # Configure cosmovisor
 cd $HOME_DIR
 mkdir -p $HOME_DIR/.warden/cosmovisor/upgrades/v0.3.0/bin
@@ -55,6 +59,9 @@ mv $HOME_DIR/go/bin/wardend $HOME_DIR/.warden/cosmovisor/upgrades/v0.3.0/bin/
 sudo ln -s $HOME_DIR/.warden/cosmovisor/genesis $HOME_DIR/.warden/cosmovisor/current -f
 sudo ln -s $HOME_DIR/.warden/cosmovisor/current/bin/wardend /usr/local/bin/wardend -f
 go install cosmossdk.io/tools/cosmovisor/cmd/cosmovisor@v1.5.0
+
+# Print contents of /usr/local/bin to check if wardend symlink is created correctly
+echo "Contents of /usr/local/bin: $(ls /usr/local/bin)"
 
 # Create and enable systemd service for Wardend
 sudo tee /etc/systemd/system/wardend.service > /dev/null << EOF
